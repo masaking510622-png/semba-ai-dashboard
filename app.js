@@ -1,242 +1,237 @@
-// MASAKI SEMBA PERFORMANCE AI - COMBAT SYSTEM v3.0 (ULTIMATE)
+// COMBAT SYSTEM v4.0 (WORLD CHAMPION ENGINE)
 // ----------------------------------------------------
 
 const MATCH_DATE = new Date("2026-04-25T00:00:00+09:00");
 const TARGET_WEIGHT = 53.0;
 
-// State Management
+const PRESETS = {
+    "鶏むね肉": { p: 23, c: 0, f: 1.5, cal: 108 },
+    "白米": { p: 2.5, c: 37, f: 0.3, cal: 168 },
+    "ブロッコリー": { p: 4.3, c: 5.2, f: 0.5, cal: 33 },
+    "プロテイン": { p: 25, c: 3, f: 1, cal: 120 },
+    "オートミール": { p: 13.7, c: 69.1, f: 5.7, cal: 380 },
+    "鮭": { p: 20, c: 0, f: 4.5, cal: 130 },
+    "卵": { p: 12.3, c: 0.3, f: 10.3, cal: 151 },
+    "アボカド": { p: 2.5, c: 6.2, f: 18.7, cal: 187 }
+};
+
 let AppState = {
-    history: JSON.parse(localStorage.getItem('semba_ai_history')) || [],
-    currentDay: {
-        m: null, // morning
-        p: null, // practice
-        n: null, // night
-        meals: [] // detailed meals [{type, img, calories, p, c, f, salt, water, timestamp}]
-    },
+    history: JSON.parse(localStorage.getItem('combat_history')) || [],
+    currentDay: { m: null, p: null, n: null, meals: [], reaction_ms: null },
     nutritionGoals: { cal: 2400, p: 150, c: 300, f: 50, salt: 8, water: 4000 }
 };
 
-// --- CORE UTILS ---
-function getTodayStr() {
-    return new Date().toISOString().split('T')[0];
+const todayStr = new Date().toISOString().split('T')[0];
+const todayInHist = AppState.history.find(h => h.date === todayStr);
+if (todayInHist) AppState.currentDay = JSON.parse(JSON.stringify(todayInHist.inputs));
+
+// --- NEURO TEST ---
+window.startReactionTest = function() {
+    const box = document.getElementById('reactionTarget');
+    const msg = document.getElementById('reactionMsg');
+    box.style.background = "#ef4444";
+    msg.innerText = "集中せよ... 緑になったら叩け";
+    
+    let trials = [];
+    const runTrial = () => {
+        const delay = 1500 + Math.random() * 3000;
+        setTimeout(() => {
+            box.style.background = "#22c55e";
+            const startTime = performance.now();
+            box.onclick = () => {
+                const endTime = performance.now();
+                const diff = endTime - startTime;
+                trials.push(diff);
+                box.style.background = "#1e293b";
+                box.onclick = null;
+                if (trials.length < 3) {
+                    msg.innerText = `Trial ${trials.length}/3: ${Math.round(diff)}ms. 次へ...`;
+                    setTimeout(runTrial, 1000);
+                } else {
+                    const avg = trials.reduce((a,b)=>a+b)/3;
+                    AppState.currentDay.reaction_ms = Math.round(avg);
+                    msg.innerText = `完了！平均: ${Math.round(avg)}ms`;
+                    saveData();
+                }
+            };
+        }, delay);
+    };
+    runTrial();
+};
+
+// --- STRATEGY MANAGER ---
+function updateStrategy() {
+    const daysLeft = calculateDaysLeft();
+    const scores = calculateScores(AppState.currentDay);
+    
+    // Default: STRENGTHEN
+    let strategy = "STRENGTHEN";
+    AppState.nutritionGoals = { cal: 2400, p: 160, c: 300, f: 50, salt: 8, water: 4000 };
+
+    if (daysLeft === 0) {
+        strategy = "MATCH_DAY";
+        AppState.nutritionGoals = { cal: 3500, p: 120, c: 600, f: 40, salt: 12, water: 3000 };
+    } else if (scores.nerve < 65 || scores.fatigue > 75) {
+        strategy = "RECOVERY";
+        AppState.nutritionGoals = { cal: 2600, p: 140, c: 450, f: 60, salt: 10, water: 5000 };
+    } else if (daysLeft <= 7) {
+        strategy = "PEAKING";
+        const carb = daysLeft <= 3 ? 150 : 250;
+        AppState.nutritionGoals = { cal: 1800, p: 180, c: carb, f: 40, salt: daysLeft <= 3 ? 3 : 6, water: daysLeft > 3 ? 6000 : 2000 };
+    }
+    return strategy;
 }
 
+// --- CORE UTILS ---
+function getTodayStr() { return new Date().toISOString().split('T')[0]; }
 function calculateDaysLeft() {
     const diff = MATCH_DATE.getTime() - new Date().getTime();
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
-function determinePhase(daysLeft) {
-    if (daysLeft === 0) return "MATCH DAY";
-    if (daysLeft <= 6) return "PEAKING";
-    if (daysLeft <= 13) return "ADJUSTMENT (調整期)";
-    if (daysLeft <= 20) return "STRENGTHEN (強化期)";
-    if (daysLeft <= 28) return "BUILD (構築期)";
-    return "PRE-BUILD";
-}
-
-// --- DATA PERSISTENCE ---
 function saveData() {
-    const todayStr = getTodayStr();
-    const existingIdx = AppState.history.findIndex(d => d.date === todayStr);
-    const dayData = {
-        date: todayStr,
-        inputs: AppState.currentDay,
-        timestamp: new Date().getTime()
-    };
-    
+    const today = getTodayStr();
+    const existingIdx = AppState.history.findIndex(d => d.date === today);
+    const dayData = { date: today, inputs: AppState.currentDay, timestamp: Date.now() };
     if (existingIdx >= 0) AppState.history[existingIdx] = dayData;
     else AppState.history.push(dayData);
-    
-    AppState.history.sort((a,b) => new Date(a.date) - new Date(b.date));
-    localStorage.setItem('semba_ai_history', JSON.stringify(AppState.history));
-    
+    localStorage.setItem('combat_history', JSON.stringify(AppState.history));
     updateDashboard();
 }
 
-// --- SCORING & PREDICTION ENGINE ---
 function calculateScores(dayInputs) {
-    const { m, p, n, meals } = dayInputs;
-    if (!m) return null;
-
-    // Nerve Score (Neurological focus)
-    const nerve = ( (p?.p_react || 80) / 1 + (p?.p_focus || 80) / 1 + (m?.m_sleep_qual || 80) / 1 + (n?.n_mental || 80) / 1) / 4;
+    const { m, p, n, meals, reaction_ms } = dayInputs;
+    const m_w = parseFloat(m?.m_weight) || 0;
     
-    // Fatigue Score
-    const fatigue = ( (m?.m_fatigue || 20) / 1 + (p?.p_intensity || 50) / 1 + (m?.m_muscle || 20) / 1 ) / 3;
-
-    // Meal Score (0-100)
-    let mealScore = 0;
-    if (meals && meals.length > 0) {
-        const totalP = meals.reduce((sum, meal) => sum + (parseFloat(meal.p) || 0), 0);
-        const totalC = meals.reduce((sum, meal) => sum + (parseFloat(meal.c) || 0), 0);
-        const pRatio = Math.min(1.2, totalP / AppState.nutritionGoals.p);
-        const cRatio = Math.min(1.2, totalC / AppState.nutritionGoals.c);
-        mealScore = (pRatio * 50) + (cRatio * 50);
-    } else {
-        mealScore = n?.n_food || 50;
+    // Neuro Score with Reaction integration
+    let nerve = ( (parseFloat(p?.p_react) || 80) + (parseFloat(p?.p_focus) || 80) + (parseFloat(m?.m_sleep_qual) || 80) + (parseFloat(n?.n_mental) || 80) ) / 4;
+    if (reaction_ms) {
+        const reactBonus = Math.max(-30, (250 - reaction_ms) / 5);
+        nerve += reactBonus;
     }
 
-    // Win Probability %
-    const recovery = (Math.min(100, (m.m_sleep_time / 8) * 100) + parseInt(m.m_sleep_qual) + mealScore) / 3;
-    const weightDiff = Math.abs(parseFloat(n?.n_weight || m.m_weight) - TARGET_WEIGHT);
+    const fatigue = ( (parseFloat(m?.m_fatigue) || 20) + (parseFloat(p?.p_intensity) || 50) + (parseFloat(m?.m_muscle) || 20) ) / 3;
+    const totalP = meals.reduce((sum, meal) => sum + (parseFloat(meal.p) || 0), 0);
+    const totalC = meals.reduce((sum, meal) => sum + (parseFloat(meal.c) || 0), 0);
+    const mealScore = Math.min(100, ( (totalP / AppState.nutritionGoals.p) * 50 + (totalC / AppState.nutritionGoals.c) * 50 ));
+    const weightDiff = Math.abs((parseFloat(n?.n_weight) || m_w) - TARGET_WEIGHT);
     const weightScore = Math.max(0, 100 - weightDiff * 15);
+    const winProb = (nerve * 0.4) + ( ( ( (parseFloat(m?.m_sleep_time||8)/8*100) + mealScore ) /2 ) * 0.3) - (fatigue * 0.2) + (weightScore * 0.1);
+
+    return { nerve: Math.round(nerve), fatigue: Math.round(fatigue), winProb: Math.round(winProb), mealScore: Math.round(mealScore) };
+}
+
+// --- ACTION ENGINE ---
+function getDietaryAdvice(scores) {
+    const totalP = AppState.currentDay.meals.reduce((sum, m) => sum + (parseFloat(m.p) || 0), 0);
+    const totalC = AppState.currentDay.meals.reduce((sum, m) => sum + (parseFloat(m.c) || 0), 0);
+    const pGap = AppState.nutritionGoals.p - totalP;
+    const cGap = AppState.nutritionGoals.c - totalC;
     
-    const winProb = (nerve * 0.4) + (recovery * 0.3) - (fatigue * 0.2) + (weightScore * 0.1);
-
-    return { nerve, fatigue, recovery, mealScore, weightScore, winProb: Math.round(winProb) };
+    const actions = [];
+    if (pGap > 15) actions.push(`鶏むね肉 ${Math.round(pGap / 0.23)}g 追加せよ`);
+    if (cGap > 30) actions.push(`白米 ${Math.round(cGap / 0.37)}g 追加せよ`);
+    if (AppState.currentDay.p?.p_intensity > 80) actions.push("電解質補給：ナトリウム 2g (塩 5g) 追加");
+    
+    return actions;
 }
 
-function predictTomorrow(scores) {
-    if (!scores) return "データ不足";
-    if (scores.nerve < 65) return "明日：パフォーマンス低下予測。神経系回復を最優先せよ。";
-    if (scores.fatigue > 70) return "明日：怪我リスク上昇。強度を30%削減すべき。";
-    return "明日：コンディション維持予測。攻めの練習が可能。";
+function getMatchDayPlan() {
+    return [
+        "07:00: 起床・計量最終確認",
+        "09:00: リロード開始（マルトデキストリン 50g）",
+        "12:00: 白米250g + 鶏ささみ100g",
+        "15:00: 試合3時間前：バナナ + OS-1 500ml",
+        "17:00: 神経活性：カフェイン 200mg 摂取"
+    ];
 }
 
-// --- DECISION ENGINE ---
-function getDecision(scores, daysLeft) {
-    if (!scores) return { state: "WAITING", command: "朝データを入力せよ", actions: ["計量機に乗る", "白湯200ml摂取"] };
-
-    if (scores.nerve < 60) {
-        return {
-            state: "FORCED RECOVERY (強制回復)",
-            command: "「絶対安静：動くな」",
-            actions: ["消化の良い食事のみ", "20時就寝", "スマホをオフにしろ"],
-            isForced: true
-        };
-    }
-
-    if (daysLeft <= 3 && scores.fatigue > 30) {
-        return {
-            state: "PEAKING RECOVERY",
-            command: "「疲労のミリ単位での削ぎ落とし」",
-            actions: ["マッサージ30分", "赤身肉150g", "塩分2g以下に抑制"],
-            isForced: false
-        };
-    }
-
-    if (scores.nerve > 80 && scores.fatigue < 40) {
-        return { state: "ATTACK (攻め)", command: "「限界を突破しろ」", actions: ["対人スパー 5R以上", "高強度HIIT実行", "タンパク質+30g追加"], isForced: false };
-    }
-
-    return { state: "MAINTAIN (維持)", command: "「精度を研ぎ澄ませ」", actions: ["シャドー 10分", "技術練習中心", "睡眠9時間確保"], isForced: false };
-}
-
-// --- NUTRITION LOGIC ---
-function getNutritionAdvice(scores, dayInputs) {
-    const advice = [];
-    const meals = dayInputs.meals || [];
-    const totalP = meals.reduce((sum, m) => sum + (parseFloat(m.p) || 0), 0);
-    const totalC = meals.reduce((sum, m) => sum + (parseFloat(m.c) || 0), 0);
-    const totalW = meals.reduce((sum, m) => sum + (parseFloat(m.water) || 0), 0) + (parseFloat(dayInputs.n?.n_water) || 0);
-
-    if (totalP < AppState.nutritionGoals.p) advice.push(`タンパク質 +${Math.round(AppState.nutritionGoals.p - totalP)}g 不足 (鶏むね肉150g追加せよ)`);
-    if (totalC > AppState.nutritionGoals.c + 50) advice.push(`炭水化物 ${Math.round(totalC - AppState.nutritionGoals.c)}g 過多 (白米100g減らせ)`);
-
-    if (scores) {
-        if (scores.fatigue > 70) advice.push("疲労高：炭水化物を+50g増やして回復を早めろ");
-        if (scores.nerve < 65) advice.push("神経消耗：消化の良い食事とMCTオイルを摂取せよ");
-    }
-
-    if (totalW < AppState.nutritionGoals.water) advice.push(`水分 -${Math.round(AppState.nutritionGoals.water - totalW)}ml 不足 (今すぐ500ml飲め)`);
-
-    return advice;
-}
-
-// --- UI UPDATES ---
+// --- DASHBOARD UPDATE ---
 function updateDashboard() {
+    const strategy = updateStrategy();
+    const scores = calculateScores(AppState.currentDay);
     const daysLeft = calculateDaysLeft();
-    const phase = determinePhase(daysLeft);
-    const todayData = AppState.history.find(d => d.date === getTodayStr());
-    const dayInputs = todayData ? todayData.inputs : AppState.currentDay;
-    
-    document.getElementById('currentDateDisplay').innerText = new Date().toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', weekday: 'short' });
-    document.getElementById('currentPhaseText').innerText = phase;
-    document.getElementById('daysLeftText').innerText = `${daysLeft} DAYS LEFT`;
 
-    const scores = calculateScores(dayInputs);
-    const decision = getDecision(scores, daysLeft);
-    
-    // Forced Mode UI Handling
-    const appBody = document.body;
-    if (decision.isForced) {
-        appBody.classList.add('forced-mode');
-        // Hide other tabs in bottom nav except home/input
-        document.querySelectorAll('.nav-item').forEach(el => {
-            const tab = el.getAttribute('data-tab');
-            if (tab !== 'dashboard' && tab !== 'morning') el.style.display = 'none';
-        });
+    // OVERTRAINING LOCKOUT
+    if (scores.nerve < 50 || scores.fatigue > 85) {
+        document.body.classList.add('forced-mode');
+        document.getElementById('dashCommand').innerText = "「禁止：オーバートレーニング停止」";
+        document.getElementById('todayStateText').innerText = "STOP TRAINING (EMERGENCY)";
+    } else if (scores.nerve < 65) {
+        document.body.classList.add('forced-mode');
+        document.getElementById('dashCommand').innerText = "「絶対安静：全機能を停止せよ」";
     } else {
-        appBody.classList.remove('forced-mode');
-        document.querySelectorAll('.nav-item').forEach(el => el.style.display = 'flex');
+        document.body.classList.remove('forced-mode');
+        document.getElementById('todayStateText').innerText = scores.winProb > 85 ? "ATTACK" : "MAINTAIN";
+        document.getElementById('dashCommand').innerText = scores.winProb > 85 ? "「KOを奪いに行け」" : "「精度を研ぎ澄ませ」";
     }
 
-    if (scores) {
-        document.getElementById('winProbScore').innerText = scores.winProb;
-        document.getElementById('winProbScore').style.borderColor = scores.winProb > 80 ? 'var(--accent-green)' : (scores.winProb < 60 ? 'var(--accent-red)' : 'var(--accent-blue)');
-        
-        document.getElementById('todayStateText').innerText = decision.state;
-        document.getElementById('dashCommand').innerText = decision.command;
-        document.getElementById('dashActions').innerHTML = decision.actions.map(a => `<li>${a}</li>`).join('');
-        
-        // Prediction
-        document.getElementById('futurePrediction').innerText = predictTomorrow(scores);
+    document.getElementById('currentDateDisplay').innerText = `${new Date().toLocaleDateString('ja-JP')} [${strategy}]`;
+    document.getElementById('daysLeftText').innerText = `${daysLeft} DAYS LEFT`;
+    document.getElementById('winProbScore').innerText = scores.winProb;
 
-        // Nutrition Overview (Dash)
-        const meals = dayInputs.meals;
-        const totalP = meals.reduce((sum, m) => sum + (parseFloat(m.p) || 0), 0);
-        const totalC = meals.reduce((sum, m) => sum + (parseFloat(m.c) || 0), 0);
-        document.getElementById('dashNutritionSummary').innerHTML = `
-            <div class="mini-nutri">P: ${totalP}/${AppState.nutritionGoals.p}g</div>
-            <div class="mini-nutri">C: ${totalC}/${AppState.nutritionGoals.c}g</div>
-        `;
-    }
+    // One Action
+    const dActions = getDietaryAdvice(scores);
+    const mPlan = (daysLeft === 0) ? getMatchDayPlan() : dActions;
+    document.getElementById('dashActions').innerHTML = `
+        <li class="primary-action-item"><strong>最優先：</strong> ${mPlan[0]}</li>
+        ${mPlan.slice(1).map(a => `<li>${a}</li>`).join('')}
+    `;
 
-    // Update Meal Tab
-    updateMealTab(dayInputs);
-    
-    // Charts
+    // 3-Day Forecast
+    const hist = AppState.history.slice(-3);
+    const predMsg = hist.length >= 3 ? ( (calculateScores(hist[2].inputs).nerve < 65) ? "⚠️ 3日後：神経疲労ピーク。怪我リスク「極大」" : "✅ 3日後：コンディション安定予測" ) : "データ蓄積中...";
+    document.getElementById('futurePrediction').innerHTML = `<div style="font-size:0.8rem; opacity:0.8;">3日予測</div><div>${predMsg}</div>`;
+
+    // Update Reaction UI
+    const reactEl = document.getElementById('dashReactionValue');
+    if (reactEl) reactEl.innerText = AppState.currentDay.reaction_ms ? `${AppState.currentDay.reaction_ms}ms` : "--";
+
+    updateMealUI();
     if (AppState.history.length > 0) renderCharts();
 }
 
-function updateMealTab(dayInputs) {
-    const meals = dayInputs.meals;
+function updateMealUI() {
     const listEl = document.getElementById('mealLogList');
     if (!listEl) return;
-
-    listEl.innerHTML = meals.map((m, idx) => `
+    listEl.innerHTML = AppState.currentDay.meals.map((m, idx) => `
         <div class="meal-item glass-panel">
             <div class="meal-info">
-                <strong>${m.type}</strong>
-                <span>P:${m.p} C:${m.c} F:${m.f}</span>
+                <strong>${m.type} (${m.weight || 0}g)</strong><br>
+                <span>P:${m.p} C:${m.c} F:${m.f} | ${m.cal}kcal</span>
             </div>
             <button class="delete-meal" onclick="deleteMeal(${idx})"><i data-lucide="x-circle"></i></button>
         </div>
     `).join('');
-    
-    const scores = calculateScores(dayInputs);
-    const advice = getNutritionAdvice(scores, dayInputs);
-    document.getElementById('mealAdviceList').innerHTML = advice.map(a => `<div class="advice-card">${a}</div>`).join('');
-    
-    const mealScore = scores?.mealScore || 0;
-    document.getElementById('mealTotalScore').innerText = mealScore;
-    
     lucide.createIcons();
+    const scores = calculateScores(AppState.currentDay);
+    document.getElementById('mealTotalScore').innerText = scores.mealScore;
+    
+    // Detailed Dietary Action List
+    const actions = getSpecificDietaryActions();
+    document.getElementById('mealAdviceList').innerHTML = actions.map(a => `<div class="advice-card">${a}</div>`).join('');
 }
 
 window.addDetailedMeal = function(e) {
-    e.preventDefault();
+    if (e) e.preventDefault();
     const form = e.target;
-    const meal = {
-        type: form.meal_type.value || "食事",
-        p: form.meal_p.value,
-        c: form.meal_c.value,
-        f: form.meal_f.value,
-        salt: form.meal_salt.value,
-        water: form.meal_water.value,
-        timestamp: new Date().getTime()
-    };
+    const name = form.meal_type.value;
+    const weight = parseFloat(form.meal_weight?.value) || 100;
+    if (!name) { alert("食事内容を入力してください"); return; }
+    let p=0, c=0, f=0, cal=0;
+    if (PRESETS[name]) {
+        const factor = weight / 100;
+        p = PRESETS[name].p * factor;
+        c = PRESETS[name].c * factor;
+        f = PRESETS[name].f * factor;
+        cal = PRESETS[name].cal * factor;
+    } else {
+        p = parseFloat(form.meal_p.value) || 0;
+        c = parseFloat(form.meal_c.value) || 0;
+        f = parseFloat(form.meal_f.value) || 0;
+        cal = (p * 4) + (c * 4) + (f * 9);
+    }
+    const meal = { type: name, weight, p:p.toFixed(1), c:c.toFixed(1), f:f.toFixed(1), cal: Math.round(cal), timestamp: Date.now() };
     AppState.currentDay.meals.push(meal);
     saveData();
     form.reset();
@@ -247,44 +242,31 @@ window.deleteMeal = function(idx) {
     saveData();
 };
 
-// --- CHARTS ---
 let trendChart = null;
 function renderCharts() {
     const ctx = document.getElementById('trendChart');
     if (!ctx) return;
-    
     const hist = AppState.history.slice(-7);
     const labels = hist.map(h => h.date.split('-')[2]);
-    const winScores = hist.map(h => calculateScores(h.inputs)?.winProb || 0);
-
+    const winScores = hist.map(h => calculateScores(h.inputs).winProb);
     if (trendChart) trendChart.destroy();
     trendChart = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels,
-            datasets: [{
-                label: '勝率',
-                data: winScores,
-                borderColor: '#0ea5e9',
-                backgroundColor: 'rgba(14, 165, 233, 0.1)',
-                fill: true,
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            scales: { y: { min: 0, max: 100 } }
-        }
+        data: { labels, datasets: [{ label: '勝率', data: winScores, borderColor: '#0ea5e9', tension: 0.4, fill: true, backgroundColor: 'rgba(14, 165, 233, 0.1)' }] },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100 } } }
     });
 }
 
-// --- EVENT LISTENERS ---
+// --- INITIALIZATION & EVENTS ---
 document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', () => {
-        const tab = item.getAttribute('data-tab');
+        const scores = calculateScores(AppState.currentDay);
+        if (scores.nerve < 60 && item.getAttribute('data-tab') !== 'dashboard') {
+            alert("強制回復モード：許可されたアクションのみ実行可能です。"); return;
+        }
         document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-        
+        const tab = item.getAttribute('data-tab');
         document.getElementById(`tab-${tab}`).classList.add('active');
         item.classList.add('active');
         window.scrollTo(0,0);
@@ -293,7 +275,9 @@ document.querySelectorAll('.nav-item').forEach(item => {
 
 document.getElementById('formMorning').addEventListener('submit', (e) => {
     e.preventDefault();
-    AppState.currentDay.m = Object.fromEntries(new FormData(e.target));
+    const data = Object.fromEntries(new FormData(e.target));
+    if (!data.m_weight) { alert("体重を入力してください"); return; }
+    AppState.currentDay.m = data;
     saveData();
     document.querySelector('[data-tab="meal"]').click();
 });
@@ -302,10 +286,10 @@ document.getElementById('formPractice').addEventListener('submit', (e) => {
     e.preventDefault();
     AppState.currentDay.p = Object.fromEntries(new FormData(e.target));
     saveData();
-    document.querySelector('[data-tab="night"]').click();
+    document.querySelector('[data-tab="analysis"]').click();
 });
 
-document.getElementById('formNight').addEventListener('submit', (e) => {
+document.getElementById('formNight')?.addEventListener('submit', (e) => {
     e.preventDefault();
     AppState.currentDay.n = Object.fromEntries(new FormData(e.target));
     saveData();
@@ -313,43 +297,23 @@ document.getElementById('formNight').addEventListener('submit', (e) => {
 });
 
 document.getElementById('resetDataBtn').addEventListener('click', () => {
-    if (confirm("全データをリセットしますか？")) {
-        localStorage.clear();
+    if (confirm("全てのデータをリセットしますか？")) {
+        localStorage.removeItem('combat_history');
         location.reload();
     }
 });
 
 // Mock Vision
 window.mockAnalyze = function(type) {
-    const target = type === 'meal' ? 'meal_p' : ''; 
-    if(target) document.getElementsByName(target)[0].value = 30; // Mock setting protein
-    alert("AI解析完了: P+30g C+40g F+10g を推定入力しました");
-};
-
-// Start
-lucide.createIcons();
-updateDashboard();
-
-document.getElementById('resetDataBtn').addEventListener('click', () => {
-    if (confirm("全データを消去しますか？")) {
-        localStorage.removeItem('semba_ai_history');
-        AppState.history = [];
-        location.reload();
-    }
-});
-
-// --- MOCK VISION AI ---
-window.mockAnalyze = function(type) {
     const outputs = {
         meal: "【解析結果】高タンパク・中炭水化物。理想的だが塩分がやや高い可能性あり。水分を多めに摂取せよ。",
         body: "【解析結果】腹筋のカット良好。むくみ無し。ピーキング順調。",
-        video: "【解析結果】パンチの引きが0.05秒遅延。神経疲労の兆候あり。本日のインターバルは80%に抑えよ。"
+        video: "【解析結果】反応速度0.23s。キレ良好。"
     };
-    const target = type === 'meal' ? 'mockMealOut' : (type === 'body' ? 'mockBodyOut' : 'mockVideoOut');
-    document.getElementById(target).innerText = outputs[type];
+    alert(outputs[type] || "解析完了");
 };
 
-// Initialization
+// Start
 lucide.createIcons();
 updateDashboard();
 if (AppState.history.length > 0) renderCharts();
