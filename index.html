@@ -1,0 +1,230 @@
+
+                <h2>MASAKI SEMBA<br><span>PERFORMANCE AI</span></h2>
+            </div><!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>仙波昌希 専属パフォーマンスAI V2</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-layout">
+        <nav class="sidebar">
+            <div class="brand">
+                <i data-lucide="cpu" class="brand-icon"></i>
+            <ul class="nav-menu">
+                <li data-tab="dashboard" class="active"><i data-lucide="layout-dashboard"></i> 総合ダッシュボード</li>
+                <li data-tab="morning"><i data-lucide="sunrise"></i> 朝データ入力</li>
+                <li data-tab="practice"><i data-lucide="activity"></i> 練習後入力</li>
+                <li data-tab="night"><i data-lucide="moon"></i> 夜データ入力</li>
+                <li data-tab="vision"><i data-lucide="camera"></i> 視覚解析 (食/体/動)</li>
+                <li data-tab="history"><i data-lucide="line-chart"></i> 履歴・トレンド分析</li>
+                <li data-tab="peaking"><i data-lucide="target"></i> ピーキング管理</li>
+                <li data-tab="matchday"><i data-lucide="flame"></i> 試合当日モード</li>
+            </ul>
+            <div class="sidebar-footer">
+                <button id="resetDataBtn" class="danger-btn"><i data-lucide="trash-2"></i> データ消去</button>
+            </div>
+        </nav>
+
+        <main class="main-content">
+            <header class="top-header">
+                <div>
+                    <h1 id="viewTitle">総合ダッシュボード</h1>
+                    <p class="subtitle" id="currentDateDisplay">--</p>
+                </div>
+                <div id="redFlagArea" class="red-flag-alert hidden">
+                    <i data-lucide="alert-triangle"></i>
+                    <span id="redFlagText">レッドフラグ検知</span>
+                </div>
+            </header>
+
+            <div class="tab-contents">
+                <section id="tab-dashboard" class="tab-pane active">
+                    <div class="dash-grid">
+                        <div class="glass-panel score-card">
+                            <h3>勝率スコア</h3>
+                            <div class="circle-score" id="winProbScore">--</div>
+                        </div>
+                        <div class="glass-panel simple-card">
+                            <h3>今日の状態/フェーズ</h3>
+                            <div class="big-text" id="todayStateText">--</div>
+                            <h3 class="mt-3">現在フェーズ</h3>
+                            <div class="big-text text-blue" id="currentPhaseText">--</div>
+                        </div>
+                        <div class="glass-panel command-card">
+                            <h3>⑧ 一言命令</h3>
+                            <div class="ultimate-command" id="dashCommand">未算出</div>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-details">
+                        <div class="glass-panel detail-card">
+                            <h3>④ 行動指示</h3>
+                            <ul id="dashActions" class="action-list"><li>データがありません</li></ul>
+                        </div>
+                        <div class="glass-panel detail-card danger-zone">
+                            <h3>⑤ 禁止事項</h3>
+                            <p id="dashProhibited">データがありません</p>
+                        </div>
+                        <div class="glass-panel detail-card nutri-zone">
+                            <h3>⑥ 栄養指示 (今日)</h3>
+                            <div class="nutrition-grid" id="dashNutrition"></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="tab-morning" class="tab-pane">
+                    <div class="glass-panel form-panel">
+                        <h2>朝の入力（起床直後）</h2>
+                        <form id="formMorning" class="slider-form">
+                            <div class="input-row">
+                                <label>起床時体重 (kg)</label>
+                                <input type="number" name="m_weight" step="0.1" required>
+                            </div>
+                            <div class="input-row">
+                                <label>安静時心拍数 (bpm)</label>
+                                <input type="number" name="m_hr" required>
+                            </div>
+                            <div class="input-row slider-row">
+                                <label>睡眠時間 (時間) <span class="val-display" id="val_sleep_time">8</span></label>
+                                <input type="range" name="m_sleep_time" min="0" max="12" step="0.5" value="8" oninput="document.getElementById('val_sleep_time').innerText=this.value">
+                            </div>
+                            <div class="input-row slider-row">
+                                <label>睡眠の質 (0=最低 100=最高) <span class="val-display" id="val_sleep_qual">80</span></label>
+                                <input type="range" name="m_sleep_qual" min="0" max="100" value="80" oninput="document.getElementById('val_sleep_qual').innerText=this.value">
+                            </div>
+                            <div class="input-row slider-row">
+                                <label>起床時疲労感 (0=快調 100=限界) <span class="val-display" id="val_m_fatigue">20</span></label>
+                                <input type="range" name="m_fatigue" min="0" max="100" value="20" oninput="document.getElementById('val_m_fatigue').innerText=this.value">
+                            </div>
+                            <div class="input-row slider-row">
+                                <label>筋の張り (0=無 100=ガチガチ) <span class="val-display" id="val_m_muscle">20</span></label>
+                                <input type="range" name="m_muscle" min="0" max="100" value="20" oninput="document.getElementById('val_m_muscle').innerText=this.value">
+                            </div>
+                            <button type="submit" class="cyber-button w-100"><i data-lucide="save"></i> 記録して次へ</button>
+                        </form>
+                    </div>
+                </section>
+
+                <section id="tab-practice" class="tab-pane">
+                    <div class="glass-panel form-panel">
+                        <h2>練習後入力（直後30秒以内）</h2>
+                        <form id="formPractice" class="slider-form">
+                            <div class="input-row">
+                                <label>メイン練習タイプ</label>
+                                <select name="p_type">
+                                    <option value="phys">フィジカル/S&C</option>
+                                    <option value="mitt">ミット・サンドバッグ</option>
+                                    <option value="spar">スパーリング・対人</option>
+                                    <option value="reco">アクティブリカバリー</option>
+                                </select>
+                            </div>
+                            <div class="input-row slider-row">
+                                <label>主観的強度 RPE (0=楽 100=死) <span class="val-display" id="val_p_intensity">80</span></label>
+                                <input type="range" name="p_intensity" min="0" max="100" value="80" oninput="document.getElementById('val_p_intensity').innerText=this.value">
+                            </div>
+                            <div class="input-row slider-row">
+                                <label>息切れ・心肺疲労 (0〜100) <span class="val-display" id="val_p_breath">50</span></label>
+                                <input type="range" name="p_breath" min="0" max="100" value="50" oninput="document.getElementById('val_p_breath').innerText=this.value">
+                            </div>
+                            <div class="input-row slider-row">
+                                <label>反応速度・キレ (0=鈍い 100=最高) <span class="val-display" id="val_p_react">80</span></label>
+                                <input type="range" name="p_react" min="0" max="100" value="80" oninput="document.getElementById('val_p_react').innerText=this.value">
+                            </div>
+                            <div class="input-row slider-row">
+                                <label>集中力 (0=散漫 100=ゾーン) <span class="val-display" id="val_p_focus">80</span></label>
+                                <input type="range" name="p_focus" min="0" max="100" value="80" oninput="document.getElementById('val_p_focus').innerText=this.value">
+                            </div>
+                            <button type="submit" class="cyber-button w-100"><i data-lucide="save"></i> 記録して次へ</button>
+                        </form>
+                    </div>
+                </section>
+
+                <section id="tab-night" class="tab-pane">
+                    <div class="glass-panel form-panel">
+                        <h2>夜の入力（就寝前）</h2>
+                        <form id="formNight" class="slider-form">
+                            <div class="input-row">
+                                <label>就寝前体重 (kg)</label>
+                                <input type="number" name="n_weight" step="0.1" required>
+                            </div>
+                            <div class="input-row slider-row">
+                                <label>食事達成度 (0=不足 100=完璧) <span class="val-display" id="val_n_food">80</span></label>
+                                <input type="range" name="n_food" min="0" max="100" value="80" oninput="document.getElementById('val_n_food').innerText=this.value">
+                            </div>
+                            <div class="input-row slider-row">
+                                <label>水分摂取量 (ml)</label>
+                                <input type="number" name="n_water" step="100" value="3000">
+                            </div>
+                            <div class="input-row slider-row">
+                                <label>メンタル状態 (0=不安 100=闘争心) <span class="val-display" id="val_n_mental">80</span></label>
+                                <input type="range" name="n_mental" min="0" max="100" value="80" oninput="document.getElementById('val_n_mental').innerText=this.value">
+                            </div>
+                            <div class="input-row slider-row">
+                                <label>痛み・怪我レベル (0=無 100=重傷) <span class="val-display" id="val_n_pain">0</span></label>
+                                <input type="range" name="n_pain" min="0" max="100" value="0" oninput="document.getElementById('val_n_pain').innerText=this.value">
+                            </div>
+                            <button type="submit" class="cyber-button w-100"><i data-lucide="save"></i> 記録して1日を終了</button>
+                        </form>
+                    </div>
+                </section>
+
+                <section id="tab-vision" class="tab-pane">
+                    <div class="glass-panel form-panel">
+                        <h2>視覚解析 AI (擬似)</h2>
+                        <div class="vision-grid">
+                            <div class="vision-card">
+                                <h3><i data-lucide="image"></i> 食事画像 解析</h3>
+                                <input type="file" accept="image/*">
+                                <button class="sec-button" onclick="mockAnalyze('meal')">解析実行</button>
+                                <div id="mockMealOut" class="mock-out text-blue"></div>
+                            </div>
+                            <div class="vision-card">
+                                <h3><i data-lucide="user"></i> コンディション 解析</h3>
+                                <input type="file" accept="image/*">
+                                <button class="sec-button" onclick="mockAnalyze('body')">解析実行</button>
+                                <div id="mockBodyOut" class="mock-out text-blue"></div>
+                            </div>
+                            <div class="vision-card">
+                                <h3><i data-lucide="video"></i> 動画 解析</h3>
+                                <input type="file" accept="video/*">
+                                <button class="sec-button" onclick="mockAnalyze('video')">解析実行</button>
+                                <div id="mockVideoOut" class="mock-out text-blue"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="tab-history" class="tab-pane">
+                    <div class="glass-panel chart-container">
+                        <h2>トレンド分析</h2>
+                        <div class="ai-insight-box" id="learningInsight">AI学習データ: 十分なデータが蓄積されていません。入力を続けてください。</div>
+                        <canvas id="trendChart" height="80"></canvas>
+                        <canvas id="weightChart" height="60" class="mt-3"></canvas>
+                    </div>
+                </section>
+
+                <section id="tab-peaking" class="tab-pane">
+                    <div class="glass-panel">
+                        <h2>ピーキング・計量モード</h2>
+                        <div id="peakingContent"></div>
+                    </div>
+                </section>
+
+                <section id="tab-matchday" class="tab-pane">
+                    <div class="glass-panel bg-red-dark">
+                        <h2><i data-lucide="flame"></i> MATCH DAY MODE</h2>
+                        <div id="matchDayContent"></div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
